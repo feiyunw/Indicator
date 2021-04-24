@@ -34,7 +34,7 @@ typedef struct tagPluginTCalcFuncInfo
 #ifdef __cplusplus
 extern "C" {
 #endif
-DECLSPEC_EXPORT  BOOL RegisterTdxFunc(PluginTCalcFuncInfo **pInfo);  
+__declspec(dllexport) BOOL RegisterTdxFunc(PluginTCalcFuncInfo **pInfo);
 #ifdef __cplusplus
 };
 #endif

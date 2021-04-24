@@ -16,6 +16,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *****************************************************************************/
 
+#include "pch.h"
+
 #include "Main.h"
 
 //=============================================================================
@@ -79,7 +81,7 @@ void Parse1(int nCount, float *pOut, float *pHigh, float *pLow)
 }
 
 // 化简函数（至少5根K线完成一笔）
-int Parse2(int nCount, float *pOut, float *pHigh, float *pLow)
+void Parse2(int nCount, float *pOut, float *pHigh, float *pLow)
 {
   int nSpan = 0;
   int nCurrTop = 0, nPrevTop = 0;
