@@ -733,21 +733,21 @@ void Func11(int nCount, float* pOut, float* pHigh, float* pLow, float* pRate)
 	}
 	AlgoA(nCount, pOut, pHigh, pLow, *pRate / 100);
 
-	// 在最后一个卖点之后寻找Ｋ线最高价Ｈ中最低的（要小于最后一根卖点Ｋ线的最高价Ｈ；价格相同时取时间在先的）
+	// 在最后一个卖点之后寻找Ｋ线最高价Ｈ中最低的（要小于最后一根卖点Ｋ线的最低价Ｌ；价格相同时取时间在先的）
 	int buyIndex = nCount - 1;
 	if (-0.5 < pOut[buyIndex] && pOut[buyIndex] < 0.5) {
 		// 最后一根Ｋ线不是买卖点，作为备选，继续找更低价
 		float buy = pHigh[buyIndex];
 		for (int i = buyIndex - 1; i >= 0; --i) {
-			if (0.5 < pOut[i]) {
-				// 遇到最后一个卖点，进行标记后结束
-				if (buy < pHigh[i]) {
+			if (pOut[i] > 0.5) {
+				// 遇到最后一个卖点，标记Ｈ最低点后结束
+				if (buy < pLow[i]) {
 					pOut[buyIndex] = -1;
 				}
 				break;
 			}
             // 非买卖点，检查是否有更低价
-            assert(-0.5 < pOut[i]);
+            assert(pOut[i] > -0.5);
 			if (pHigh[i] <= buy) {
 				buyIndex = i;
 				buy = pHigh[buyIndex];
