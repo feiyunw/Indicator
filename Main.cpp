@@ -604,11 +604,11 @@ void AlgoB(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
         return;
     }
 
-     // 备选的卖点：从第二根Ｋ线起最低价Ｌ中最高的，价格相同时取时间在后的
+     // 备选的卖点：从第二根Ｋ线起最低价Ｌ中最高的，价格相同时取时间在前的
     int sellIndex = 1;
     float sell = pLow[sellIndex];
     for (int i = 1; i < nCount; ++i) {
-        if (pLow[i] >= sell) {
+        if (pLow[i] > sell) {
             sellIndex = i;
             sell = pLow[sellIndex];
         }
