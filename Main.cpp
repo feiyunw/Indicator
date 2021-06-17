@@ -730,13 +730,13 @@ void Func11(int nCount, float* pOut, float* pHigh, float* pLow, float* pRate)
 		for (int i = buyIndex - 1; i >= 0; --i) {
 			if (pOut[i] > 0.5) {
 				// 遇到最后一个卖点，标记Ｈ最低点后结束
-				if (buy < pLow[i]) {
+				if (buy < pLow[i] && IsGoodTrade(buy, pLow[i], *pRate / 100)) {
 					pOut[buyIndex] = -1;
 				}
 				break;
 			}
-            // 非买卖点，检查是否有更低价
-            assert(pOut[i] > -0.5);
+			// 非买卖点，检查是否有更低价
+			assert(pOut[i] > -0.5);
 			if (pHigh[i] <= buy) {
 				buyIndex = i;
 				buy = pHigh[buyIndex];
