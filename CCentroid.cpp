@@ -22,7 +22,7 @@
 
 CCentroid::CCentroid()
 {
-  this->bValid = false;
+  m_bInCentre = false;
   this->nTop1  = 0;
   this->nTop2  = 0;
   this->nBot1  = 0;
@@ -47,7 +47,7 @@ CCentroid::~CCentroid()
 // 推入高点并计算状态
 bool CCentroid::PushHigh(int nIndex, float fValue)
 {
-  if (bValid == true)
+  if (m_bInCentre)
   {
     nLines++;
     fPHigh = fHigh;
@@ -65,7 +65,7 @@ bool CCentroid::PushHigh(int nIndex, float fValue)
   fTop1 = fValue;
 
   // 如果非中枢模式下
-  if (bValid == false)
+  if (!m_bInCentre)
   {
     // 更新中枢高
     if (fTop1 < fTop2)
@@ -88,7 +88,7 @@ bool CCentroid::PushHigh(int nIndex, float fValue)
       {
         nStart = nTop2;
       }
-      bValid = true;
+      m_bInCentre = true;
     }
   }
   // 如果在中枢中
@@ -106,7 +106,7 @@ bool CCentroid::PushHigh(int nIndex, float fValue)
       fHigh  = fTop1;
       fLow   = fBot1;
       nEnd   = nTop2;
-      bValid = false;
+      m_bInCentre = false;
 
       if (nLines > 2)
       {
@@ -120,7 +120,7 @@ bool CCentroid::PushHigh(int nIndex, float fValue)
 
 bool CCentroid::PushLow(int nIndex, float fValue)
 {
-  if (bValid == true)
+  if (m_bInCentre)
   {
     nLines++;
     fPLow  = fLow;
@@ -138,7 +138,7 @@ bool CCentroid::PushLow(int nIndex, float fValue)
   fBot1 = fValue;
 
   // 如果非中枢模式下
-  if (bValid == false)
+  if (!m_bInCentre)
   {
     // 更新区间低点
     if (fBot1 > fBot2)
@@ -161,7 +161,7 @@ bool CCentroid::PushLow(int nIndex, float fValue)
       {
         nStart = nBot2;
       }
-      bValid = true;
+      m_bInCentre = true;
     }
   }
   // 如果在中枢中
@@ -179,7 +179,7 @@ bool CCentroid::PushLow(int nIndex, float fValue)
       fHigh  = fTop1;
       fLow   = fBot1;
       nEnd   = nBot2;
-      bValid = false;
+      m_bInCentre = false;
 
       if (nLines > 2)
       {

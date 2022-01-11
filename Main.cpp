@@ -250,44 +250,35 @@ void Func1(int nCount, float *pOut, float *pHigh, float *pLow, float *pTime)
 
 void Func2(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
 {
-  CCentroid Centroid;
+	CCentroid Centroid;
 
-  for (int i = 0; i < nCount; i++)
-  {
-    if (pIn[i] == 1)
-    {
-      // 遇到线段高点，推入中枢算法
-      if (Centroid.PushHigh(i, pHigh[i]))
-      {
-        // 区段内更新算得的中枢高数据
-        for (int j = Centroid.nStart; j <= Centroid.nEnd; j++)
-        {
-          pOut[j] = Centroid.fPHigh;
-        }
-      }
-    }
-    else if (pIn[i] == -1)
-    {
-      // 遇到线段低点，推入中枢算法
-      if (Centroid.PushLow(i, pLow[i]))
-      {
-        // 区段内更新算得的中枢低数据
-        for (int j = Centroid.nStart; j <= Centroid.nEnd; j++)
-        {
-          pOut[j] = Centroid.fPHigh;
-        }
-      }
-    }
+	for (int i = 0; i < nCount; ++i) {
+		if (pIn[i] == 1) {
+			// 遇到线段高点，推入中枢算法
+			if (Centroid.PushHigh(i, pHigh[i])) {
+				// 区段内更新算得的中枢高数据
+				for (int j = Centroid.GetStart(); j <= Centroid.GetEnd(); ++j) {
+					pOut[j] = Centroid.GetPrevHigh();
+				}
+			}
+		}
+		else if (pIn[i] == -1) {
+			// 遇到线段低点，推入中枢算法
+			if (Centroid.PushLow(i, pLow[i])) {
+				// 区段内更新算得的中枢低数据
+				for (int j = Centroid.GetStart(); j <= Centroid.GetEnd(); ++j) {
+					pOut[j] = Centroid.GetPrevHigh();
+				}
+			}
+		}
 
-    // 尾部未完成中枢处理
-    if (Centroid.bValid && (Centroid.nLines >= 2) && (i == nCount - 1))
-    {
-      for (int j = Centroid.nStart; j < nCount; j++)
-      {
-        pOut[j] = Centroid.fHigh;
-      }
-    }
-  }
+		// 尾部未完成中枢处理
+		if (Centroid.IsInCentre() && (Centroid.GetLines() >= 2) && (i == nCount - 1)) {
+			for (int j = Centroid.GetStart(); j < nCount; ++j) {
+				pOut[j] = Centroid.GetHigh();
+			}
+		}
+	}
 }
 
 //=============================================================================
@@ -296,44 +287,35 @@ void Func2(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
 
 void Func3(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
 {
-  CCentroid Centroid;
+	CCentroid Centroid;
 
-  for (int i = 0; i < nCount; i++)
-  {
-    if (pIn[i] == 1)
-    {
-      // 遇到线段高点，推入中枢算法
-      if (Centroid.PushHigh(i, pHigh[i]))
-      {
-        // 区段内更新算得的中枢高数据
-        for (int j = Centroid.nStart; j <= Centroid.nEnd; j++)
-        {
-          pOut[j] = Centroid.fPLow;
-        }
-      }
-    }
-    else if (pIn[i] == -1)
-    {
-      // 遇到线段低点，推入中枢算法
-      if (Centroid.PushLow(i, pLow[i]))
-      {
-        // 区段内更新算得的中枢低数据
-        for (int j = Centroid.nStart; j <= Centroid.nEnd; j++)
-        {
-          pOut[j] = Centroid.fPLow;
-        }
-      }
-    }
+	for (int i = 0; i < nCount; ++i) {
+		if (pIn[i] == 1) {
+			// 遇到线段高点，推入中枢算法
+			if (Centroid.PushHigh(i, pHigh[i])) {
+				// 区段内更新算得的中枢高数据
+				for (int j = Centroid.GetStart(); j <= Centroid.GetEnd(); ++j) {
+					pOut[j] = Centroid.GetPrevLow();
+				}
+			}
+		}
+		else if (pIn[i] == -1) {
+			// 遇到线段低点，推入中枢算法
+			if (Centroid.PushLow(i, pLow[i])) {
+				// 区段内更新算得的中枢低数据
+				for (int j = Centroid.GetStart(); j <= Centroid.GetEnd(); ++j) {
+					pOut[j] = Centroid.GetPrevLow();
+				}
+			}
+		}
 
-    // 尾部未完成中枢处理
-    if (Centroid.bValid && (Centroid.nLines >= 2) && (i == nCount - 1))
-    {
-      for (int j = Centroid.nStart; j < nCount; j++)
-      {
-        pOut[j] = Centroid.fLow;
-      }
-    }
-  }
+		// 尾部未完成中枢处理
+		if (Centroid.IsInCentre() && (Centroid.GetLines() >= 2) && (i == nCount - 1)) {
+			for (int j = Centroid.GetStart(); j < nCount; ++j) {
+				pOut[j] = Centroid.GetLow();
+			}
+		}
+	}
 }
 
 //=============================================================================
@@ -342,38 +324,32 @@ void Func3(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
 
 void Func4(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
 {
-  CCentroid Centroid;
+	CCentroid Centroid;
 
-  for (int i = 0; i < nCount; i++)
-  {
-    if (pIn[i] == 1)
-    {
-      // 遇到线段高点，推入中枢算法
-      if (Centroid.PushHigh(i, pHigh[i]))
-      {
-        // 进行标记
-        pOut[Centroid.nStart] = 1;
-        pOut[Centroid.nEnd]   = 2;
-      }
-    }
-    else if (pIn[i] == -1)
-    {
-      // 遇到线段低点，推入中枢算法
-      if (Centroid.PushLow(i, pLow[i]))
-      {
-        // 进行标记
-        pOut[Centroid.nStart] = 1;
-        pOut[Centroid.nEnd]   = 2;
-      }
-    }
+	for (int i = 0; i < nCount; ++i) {
+		if (pIn[i] == 1) {
+			// 遇到线段高点，推入中枢算法
+			if (Centroid.PushHigh(i, pHigh[i])) {
+				// 进行标记
+				pOut[Centroid.GetStart()] = 1;
+				pOut[Centroid.GetEnd()] = 2;
+			}
+		}
+		else if (pIn[i] == -1) {
+			// 遇到线段低点，推入中枢算法
+			if (Centroid.PushLow(i, pLow[i])) {
+				// 进行标记
+				pOut[Centroid.GetStart()] = 1;
+				pOut[Centroid.GetEnd()] = 2;
+			}
+		}
 
-    // 尾部未完成中枢处理
-    if (Centroid.bValid && (Centroid.nLines >= 2) && (i == nCount - 1))
-    {
-      pOut[Centroid.nStart] = 1;
-      pOut[nCount-1]        = 2;
-    }
-  }
+		// 尾部未完成中枢处理
+		if (Centroid.IsInCentre() && (Centroid.GetLines() >= 2) && (i == nCount - 1)) {
+			pOut[Centroid.GetStart()] = 1;
+			pOut[nCount - 1] = 2;
+		}
+	}
 }
 
 //=============================================================================
@@ -382,45 +358,36 @@ void Func4(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
 
 void Func5(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
 {
-  CCentroid Centroid;
+	CCentroid Centroid;
 
-  for (int i = 0; i < nCount; i++)
-  {
-    if (pIn[i] == 1)
-    {
-      if (Centroid.PushHigh(i, pHigh[i]))
-      {
-        // 第三类卖点信号
-        pOut[i] = 13;
-      }
-      else if (Centroid.fTop1 < Centroid.fTop2)
-      {
-        // 第二类卖点信号
-        pOut[i] = 12;
-      }
-      else
-      {
-        pOut[i] = 0;
-      }
-    }
-    else if (pIn[i] == -1)
-    {
-      if (Centroid.PushLow(i, pLow[i]))
-      {
-        // 第三类买点信号
-        pOut[i] = 3;
-      }
-      else if (Centroid.fBot1 > Centroid.fBot2)
-      {
-        // 第二类买点信号
-        pOut[i] = 2;
-      }
-      else
-      {
-        pOut[i] = 0;
-      }
-    }
-  }
+	for (int i = 0; i < nCount; ++i) {
+		if (pIn[i] == 1) {
+			if (Centroid.PushHigh(i, pHigh[i])) {
+				// 第三类卖点信号
+				pOut[i] = 13;
+			}
+			else if (Centroid.IsTop1BelowTop2()) {
+				// 第二类卖点信号
+				pOut[i] = 12;
+			}
+			else {
+				pOut[i] = 0;
+			}
+		}
+		else if (pIn[i] == -1) {
+			if (Centroid.PushLow(i, pLow[i])) {
+				// 第三类买点信号
+				pOut[i] = 3;
+			}
+			else if (Centroid.IsBottom1AboveBottom2()) {
+				// 第二类买点信号
+				pOut[i] = 2;
+			}
+			else {
+				pOut[i] = 0;
+			}
+		}
+	}
 }
 
 //=============================================================================
