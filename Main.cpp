@@ -684,10 +684,12 @@ void Func11(int nCount, float* pOut, float* pHigh, float* pLow, float* pRate)
 	assert(pHigh);
 	assert(pLow);
 	assert(pRate);
+    float fRate = *pRate / 100000;
+
 	for (int i = 0; i < nCount; ++i) {
 		pOut[i] = 0;
 	}
-	AlgoA(nCount, pOut, pHigh, pLow, *pRate / 100);
+	AlgoA(nCount, pOut, pHigh, pLow, fRate);
 
 	// 在最后一个卖点之后寻找Ｋ线最高价Ｈ中最低的（要小于最后一根卖点Ｋ线的最低价Ｌ；价格相同时取时间在先的）
 	int buyIndex = nCount - 1;
@@ -699,7 +701,7 @@ void Func11(int nCount, float* pOut, float* pHigh, float* pLow, float* pRate)
             for (int i = buyIndex - 1; i >= 0; --i) {
                 if (pOut[i] > 0.5) {
                     // 遇到最后一个卖点，标记Ｈ最低点后结束
-                    if (buy < pLow[i] && IsGoodTrade(buy, pLow[i], *pRate / 100)) {
+                    if (buy < pLow[i] && IsGoodTrade(buy, pLow[i], fRate)) {
                         pOut[buyIndex] = -1;
                     }
                     break;
@@ -740,4 +742,3 @@ BOOL RegisterTdxFunc(PluginTCalcFuncInfo **pInfo)
 
   return FALSE;
 }
-
