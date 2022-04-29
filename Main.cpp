@@ -538,28 +538,31 @@ bool IsGoodTrade(float buy, float sell, float rate)
 
 void AlgoB(int nCount, float* pOut, float* pHigh, float* pLow, float rate);
 void AlgoBS(int nCount, float* pOut, float* pHigh, float* pLow, float rate);
-void AlgoS(int nCount, float* pOut, float* pHigh, float* pLow, float rate);
 
 // 算法Ａ：在一段Ｋ线图中寻找获利最大的Ｋ线交易机会组合
 void AlgoA(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
 {
-	if (nCount < 2) {
+    // 至少5条Ｋ线
+	if (nCount < 5) {
 		return;
 	}
 
-	// 备选的买点：所有Ｋ线最高价Ｈ中最低的，价格相同时取时间在先的
+	// 备选的买点：所有Ｋ线最高价Ｈ中最低的，Ｈ相同时取Ｌ最低的，都相同取时间在先的
 	int buyIndex = 0;
 	float buy = pHigh[buyIndex];
+    float low = pLow[buyIndex];
 	for (int i = 1; i < nCount; ++i) {
-		if (pHigh[i] < buy) {
+        float h = pHigh[i];
+		if ((h < buy) || (h - buy < FLT_EPSILON && pLow[i] < low)) {
 			buyIndex = i;
 			buy = pHigh[buyIndex];
-		}
+            low = pLow[buyIndex];
+        }
 	}
 
 	// Ｋ线被备选买点分为两类：
 	// （１）位于备选买点之前（不含备选买点）：在该区间应用算法A
-	AlgoA(buyIndex, pOut, pHigh, pLow, rate);
+	AlgoA(buyIndex - 3, pOut, pHigh, pLow, rate);
 	// （２）位于备选买点之后（含备选买点）：在该区间应用算法B
 	AlgoB(nCount - buyIndex, pOut + buyIndex, pHigh + buyIndex, pLow + buyIndex, rate);
 }
@@ -567,17 +570,21 @@ void AlgoA(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
 // 算法B：在一段Ｋ线图中，已知最佳备选买点Ｂ是第一根Ｋ线，寻找获利最大的Ｋ线交易机会组合
 void AlgoB(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
 {
-    if (nCount < 2) {
+    // 至少5条Ｋ线
+    if (nCount < 5) {
         return;
     }
 
-     // 备选的卖点：从第二根Ｋ线起最低价Ｌ中最高的，价格相同时取时间在前的
-    int sellIndex = 1;
+     // 备选的卖点：后续Ｋ线最低价Ｌ中最高的，Ｌ相同时取Ｈ最高的，都相同取时间在后的
+    int sellIndex = nCount - 1;
     float sell = pLow[sellIndex];
-    for (int i = 1; i < nCount; ++i) {
-        if (pLow[i] > sell) {
+    float high = pHigh[sellIndex];
+    for (int i = sellIndex - 1; i > 3; --i) {
+        float l = pLow[i];
+        if ((sell < l) || (sell - l < FLT_EPSILON && high < pHigh[i])) {
             sellIndex = i;
             sell = pLow[sellIndex];
+            high = pHigh[sellIndex];
         }
     }
 
@@ -591,14 +598,15 @@ void AlgoB(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
     // （１）位于买点和卖点之间（闭区间）：在该区间应用算法BS
     AlgoBS(sellIndex + 1, pOut, pHigh, pLow, rate);
     // （２）位于卖点之后（不含卖点）：在该区间应用算法A
-    AlgoA(nCount - sellIndex - 1, pOut + sellIndex + 1, pHigh + sellIndex + 1, pLow + sellIndex + 1, rate);
+    AlgoA(nCount - sellIndex - 4, pOut + sellIndex + 4, pHigh + sellIndex + 4, pLow + sellIndex + 4, rate);
 }
 
 // 算法BS：在一段Ｋ线图中，已知最佳买点Ｂ是第一根Ｋ线，最佳卖点Ｓ是最后一根Ｋ线，寻找获利最大的Ｋ线交易机会组合
 void AlgoBS(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
 {
-    if (nCount < 4) {
-        if (nCount > 1) {
+    // 相邻买卖点之间至少间隔3根Ｋ线
+    if (nCount < 13) {
+        if (nCount >= 5) {
             pOut[0] = -1;
             pOut[nCount - 1] = 1;
         }
@@ -607,75 +615,48 @@ void AlgoBS(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
 
     int buyIndex = 0;
     int lastSellIndex = nCount - 1;
-    // 备选的卖点：从上一个买点向后寻找Ｋ线最低价Ｌ的局部极大值（卖出必须是有利的；价格相同时取时间在后的）
-    for (int sellIndex = 1; sellIndex < lastSellIndex - 1; ++sellIndex) {
+	float firstBuy = pHigh[0];
+    // 临时的中间卖点：在初始买点之后Ｋ线最低价Ｌ具有局部极大值的（卖出必须是有利的；价格相同时取时间在先的）
+    for (int sellIndex = 4; sellIndex < lastSellIndex - 7; ++sellIndex) {
         float sell = pLow[sellIndex];
-        if (pLow[sellIndex - 1] <= sell && sell > pLow[sellIndex + 1] && IsGoodTrade(pHigh[0], sell, rate)) {
-            // 备选的买点：在备选卖点之后、最后卖点之前的所有Ｋ线最高价Ｈ中最低的，价格相同时取时间在先的
+        if ((4 == sellIndex || pLow[sellIndex - 1] < sell) && sell >= pLow[sellIndex + 1] && IsGoodTrade(firstBuy, sell, rate)) {
             float buy;
-            if (sellIndex < buyIndex) {
+            if (sellIndex + 3 < buyIndex) {
                 // 复用上一次找到的备选买点
                 buy = pHigh[buyIndex];
             }
             else {
-                buyIndex = sellIndex + 1;
+                // 备选的中间买点：在中间卖点之后Ｋ线最高价Ｈ中最低的，Ｈ相同时取Ｌ最低的，都相同时取时间在先的
+                buyIndex = sellIndex + 4;
                 buy = pHigh[buyIndex];
-                for (int i = buyIndex + 1; i < lastSellIndex; ++i) {
-                    if (pHigh[i] < buy) {
+                float low = pLow[buyIndex];
+                for (int i = buyIndex + 1; i < lastSellIndex - 3; ++i) {
+                    float h = pHigh[i];
+                    if ((h < buy) || (h - buy < FLT_EPSILON && pLow[i] < low)) {
                         buyIndex = i;
                         buy = pHigh[buyIndex];
+                        low = pLow[buyIndex];
                     }
                 }
             }
             assert(sellIndex < buyIndex);
 
-            // 备选买卖点匹配的交易必须是有利的
+            // 中间买卖点匹配的交易必须是有利的
             if (IsGoodTrade(buy, sell, rate)) {
-                // 找到了买点。Ｋ线被买点分为两类：
+                // 找到了中间买点。Ｋ线被中间买点分为两类：
                 // （１）位于买点之前（不含买点）：在该区间应用算法B
-                AlgoB(buyIndex, pOut, pHigh, pLow, rate);
+                AlgoB(buyIndex - 3, pOut, pHigh, pLow, rate);
                 // （２）位于买点之后（闭区间）：在该区间应用算法BS
                 AlgoBS(nCount - buyIndex, pOut + buyIndex, pHigh + buyIndex, pLow + buyIndex, rate);
                 return;
             }
         }
-        // 如果找不到合适的买点，则继续推进寻找下一个备选卖点
+        // 如果找不到合适的中间买点，则继续推进寻找下一个中间卖点
     }
 
-    // 如果找不到合适的备选卖点，说明没有其他交易机会。标记区间头尾为买卖点，算法结束。
+    // 找不到合适的中间买卖点，标记区间头尾为买卖点，算法结束
     pOut[0] = -1;
     pOut[nCount - 1] = 1;
-}
-
-// 算法S：在一段Ｋ线图中，已知最佳备选卖点Ｓ是最后一根Ｋ线，寻找获利最大的Ｋ线交易机会组合
-void AlgoS(int nCount, float* pOut, float* pHigh, float* pLow, float rate)
-{
-    if (nCount < 2) {
-        return;
-    }
-
-    // 备选的买点：除最后一根Ｋ线外最高价Ｈ中最低的，价格相同时取时间在先的
-    int buyIndex = 0;
-    float buy = pHigh[buyIndex];
-    int sellIndex = nCount - 1;
-    for (int i = 1; i < sellIndex; ++i) {
-        if (pHigh[i] < buy) {
-            buyIndex = i;
-            buy = pHigh[buyIndex];
-        }
-    }
-
-    // 如果备选交易不是有利的，算法结束
-    float sell = pLow[sellIndex];
-    if (!IsGoodTrade(buy, sell, rate)) {
-        return;
-    }
-
-	// Ｋ线被买卖点分为两类：
-	// （１）位于买点之前（不含买点）：在该区间应用算法A
-	AlgoA(buyIndex, pOut, pHigh, pLow, rate);
-	// （２）位于买点和卖点之间（闭区间）：在该区间应用算法BS
-	AlgoBS(nCount - buyIndex, pOut + buyIndex, pHigh + buyIndex, pLow + buyIndex, rate);
 }
 
 void Func11(int nCount, float* pOut, float* pHigh, float* pLow, float* pRate)
@@ -691,13 +672,14 @@ void Func11(int nCount, float* pOut, float* pHigh, float* pLow, float* pRate)
 	}
 	AlgoA(nCount, pOut, pHigh, pLow, fRate);
 
-	// 在最后一个卖点之后寻找Ｋ线最高价Ｈ中最低的（要小于最后一根卖点Ｋ线的最低价Ｌ；价格相同时取时间在先的）
+	// 在最后一个卖点之后寻找Ｋ线最高价Ｈ中最低的（要小于最后一根卖点Ｋ线的最低价Ｌ），Ｈ相同时取Ｌ最低的，都相同时取时间在先的
 	int buyIndex = nCount - 1;
 	if (0 <= buyIndex && -0.5 < pOut[buyIndex] && pOut[buyIndex] < 0.5) {
         --buyIndex;
         if (0 <= buyIndex && -0.5 < pOut[buyIndex] && pOut[buyIndex] < 0.5) {
             // 倒数第二根Ｋ线不是买卖点，作为备选，继续找更低价
             float buy = pHigh[buyIndex];
+            float low = pLow[buyIndex];
             for (int i = buyIndex - 1; i >= 0; --i) {
                 if (pOut[i] > 0.5) {
                     // 遇到最后一个卖点，标记Ｈ最低点后结束
@@ -708,9 +690,10 @@ void Func11(int nCount, float* pOut, float* pHigh, float* pLow, float* pRate)
                 }
                 // 非买卖点，检查是否有更低价
                 assert(pOut[i] > -0.5);
-                if (pHigh[i] <= buy) {
+                if ((pHigh[i] < buy) || (pHigh[i] - buy < FLT_EPSILON && pLow[i] <= low)) {
                     buyIndex = i;
                     buy = pHigh[buyIndex];
+                    low = pLow[buyIndex];
                 }
             }
         }
