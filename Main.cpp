@@ -91,7 +91,9 @@ void Func1(int nCount, float* pOut, float* pHigh, float* pLow, float* c)
 	vBL.reserve(nCount);
 	vBH.push_back(0);
 	vBL.push_back(0);
+	pOut[0] = 0;
 	for (int i = 1; i < nCount; ++i) {
+		pOut[i] = 0;
 		if (pLow[i] <= pLow[vBL.back()] && pHigh[vBH.back()] <= pHigh[i]) {
 			// 当前K线包含上一根K线
 			auto itH = vBH.rbegin();
@@ -730,29 +732,30 @@ void Func7(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
   }
 }
 
-//=============================================================================
-// 输出函数8号：线段斜率分析指标
-//=============================================================================
-
+// 在pIn标记的高低点处（高=1，低=-1），输出从上一个标记点到当前点的高低连线斜率
 void Func8(int nCount, float* pOut, float* pIn, float* pHigh, float* pLow)
 {
-	int nPrevBot = -1;
-	int nPrevTop = -1;
-	for (int i = 0; i < nCount; ++i) {
+	int x = 0;
+	int i = 0;
+
+	for (; i < nCount; ++i) {
 		pOut[i] = 0;
-		if (pIn[i] > 0.5) {
-			// 高点，计算上升段斜率
-			if (0 <= nPrevBot) {
-				pOut[i] = (pHigh[i] - pLow[nPrevBot]) / (i - nPrevBot);
-			}
-			nPrevTop = i;
+		if (pIn[i] < -0.5 || 0.5 < pIn[i]) {
+			x = i;
+			break;
 		}
-		else if (pIn[i] < -0.5) {
-			// 低点，计算下降段斜率
-			if (0 <= nPrevTop) {
-				pOut[i] = (pLow[i] - pHigh[nPrevTop]) / (i - nPrevTop);
-			}
-			nPrevBot = i;
+	}
+	for (++i; i < nCount; ++i) {
+		if (pIn[i] < -0.5) {
+			pOut[i] = (pLow[i] - pHigh[x]) / (i - x);
+			x = i;
+		}
+		else if (0.5 < pIn[i]) {
+			pOut[i] = (pHigh[i] - pLow[x]) / (i - x);
+			x = i;
+		}
+		else {
+			pOut[i] = 0;
 		}
 	}
 }
