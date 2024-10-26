@@ -18,82 +18,61 @@
 
 #include "pch.h"
 #include <cassert>
+#include <vector>
 
 #include "Main.h"
 
-/* 缠论TDX指标公式
-DLL:=TDXDLL1(1,H,L,RATE); {K线交易使用11号接口替换1号接口}
-HIB:=TDXDLL1(2,DLL,H,L); {中枢高点}
-LOB:=TDXDLL1(3,DLL,H,L); {中枢低点}
-SIG:=TDXDLL1(4,DLL,H,L); {中枢起终点}
-BSP:=TDXDLL1(5,DLL,L,H); {二三类买卖点}
-SLP:=TDXDLL1(8,DLL,L,H); {线段斜率}
-MA89:MA(CLOSE,89), COLORGRAY;
-MA55:MA(CLOSE,55), COLORGREEN;
-MA20:MA(CLOSE,20), COLORMAGENTA;
-MA10:MA(CLOSE,10), COLORYELLOW;
-MA5:MA(CLOSE,5), COLORWHITE;
-DRAWLINE(DLL=-1,L,DLL=+1,H,0), COLORRED;
-DRAWLINE(DLL=+1,H,DLL=-1,L,0), COLORGREEN;
-IF(HIB,HIB,DRAWNULL), COLORLIRED;
-IF(LOB,LOB,DRAWNULL), COLORLIMAGENTA;
-DRAWNUMBER(DLL=+1,H,SLP), COLORRED, DRAWABOVE;
-DRAWNUMBER(DLL=-1,L,SLP), COLORGREEN;
-BUY(BSP=3,LOW);
-SELL(BSP=12,HIGH);
-BUYSHORT(BSP=2,LOW);
-SELLSHORT(BSP=13,HIGH);
-*/
-
-// 获取经过包含处理后的K线的区间值对应的原始K线索引到szL和szH，返回索引数量
-int ReadKLines(int nReadCount, int nSkip, int nCount, float* pOut, int* szH, int* szL)
+// 分型（作为笔的端点）是否可延伸
+bool CanExtend(int f1, int f2, const std::vector<int>& vBH, const std::vector<int>& vBL, float* pHigh, float* pLow)
 {
-	assert(nReadCount >= 0);
-	assert(nSkip >= -1);
-	assert(nCount >= 0);
-	assert(pOut);
-	assert(szH);
-	assert(szL);
+	assert(f1 * f2 > 0);
+	assert(pHigh);
+	assert(pLow);
 
-	int nH = 0;	// szH[]索引
-	int nL = 0;	// szL[]索引
-
-	// 获取处理后的K线
-	for (int i = nSkip + 1; (nH < nReadCount || nL < nReadCount) && i < nCount; ++i) {
-		if (pOut[i] < 0.5) {
-			// 0=不取
-		}
-		else if (pOut[i] < 1.5) {
-			// 1=取高
-			if (nH < nReadCount) {
-				szH[nH++] = i;
-			}
-		}
-		else if (pOut[i] < 2.5) {
-			// 2=取低
-			if (nL < nReadCount) {
-				szL[nL++] = i;
-			}
-		}
-		else {
-			// 3=都取
-			if (nH < nReadCount) {
-				szH[nH++] = i;
-			}
-			if (nL < nReadCount) {
-				szL[nL++] = i;
-			}
+	if (f1 > 0) {
+		// 顶分型
+		if (pHigh[vBH[f1]] < pHigh[vBH[f2]]) {
+			// 后面的顶高于前面的顶
+			return true;
 		}
 	}
-
-	// 如果pOut[]被截断，nH可能不等于nL
-	int ret = (nH < nL) ? nH : nL;
-
-	for (int i = 0; i < ret; ++i) {
-		pOut[szH[i]] = 0;
-		pOut[szL[i]] = 0;
+	else {
+		// 底分型
+		if (pLow[vBL[-f1]] > pLow[vBL[-f2]]) {
+			// 后面的底低于前面的底
+			return true;
+		}
 	}
-	return ret;
+	return false;
+}
+
+// 是否有效笔
+bool IsValidBi(int f1, int f2, const std::vector<int>& vBH, const std::vector<int>& vBL, float* pHigh)
+{
+	assert(f1 * f2 < 0);
+	assert(pHigh);
+
+	if (f1 > 0) {
+		// 顶分型
+		if (-f2 - f1 < 3 || vBL[-f2] - vBH[f1] <= 3) {
+			return false;
+		}
+		// 顶分型最高K线的区间高于底分型最低K线的区间
+		if (pHigh[vBH[f1]] <= pHigh[vBL[-f2]]) {
+			return false;
+		}
+	}
+	else {
+		// 底分型
+		if (f2 + f1 < 3 || vBH[f2] - vBL[-f1] <= 3) {
+			return false;
+		}
+		// 顶分型最高K线的区间高于底分型最低K线的区间
+		if (pHigh[vBH[f2]] <= pHigh[vBL[-f1]]) {
+			return false;
+		}
+	}
+	return true;
 }
 
 // 标记笔的高低点（高点=1，低点=-1）
@@ -103,293 +82,390 @@ void Func1(int nCount, float* pOut, float* pHigh, float* pLow, float* c)
 	assert(pOut);
 	assert(pHigh);
 	assert(pLow);
-	if (nCount < 5) return;
 
-	int nH = 0;	// 上一根K线高点索引
-	int nL = 0;	// 上一根K线低点索引
-	float fH = pHigh[0];	// 上一根K线高点值
-	float fL = pLow[0];	// 上一根K线低点值
-	float fPreH = fL;	// 前一根具有非包含关系的K线的高点值
+	std::vector<int> vBH;	// 经包含处理后的新K线高点对应的原K线索引
+	std::vector<int> vBL;	// 经包含处理后的新K线低点对应的原K线索引
 
 	// K线的包含处理
-	pOut[0] = 3;	// 1=取高，2=取低，3=都取，0=不取
+	vBH.reserve(nCount);
+	vBL.reserve(nCount);
+	vBH.push_back(0);
+	vBL.push_back(0);
 	for (int i = 1; i < nCount; ++i) {
-		if (pLow[i] <= fL && fH <= pHigh[i]) {
+		if (pLow[i] <= pLow[vBL.back()] && pHigh[vBH.back()] <= pHigh[i]) {
 			// 当前K线包含上一根K线
-			if (fPreH < fH) {
-				// 第一根高点比其前一根具有非包含关系K线的高点高
-				// 向上处理，取两根Ｋ线中的最高点为高点，次低点为低点
-				pOut[nH] -= 1;
-				pOut[i] = 1;
-				nH = i;
-				fH = pHigh[nH];
+			auto itH = vBH.rbegin();
+			auto itL = vBL.rbegin();
+			int process = 1;	// K线包含处理：1=向上；-1=向下
+			for (; itH != vBH.rend() && itL != vBL.rend(); ++itH, ++itL) {
+				// 未被包含的前一根K线
+				if (pHigh[*itH] > pHigh[i]) {
+					// 高于当前K线，向下处理
+					process = -1;
+					break;
+				}
+				if (pLow[*itL] < pLow[i]) {
+					// 低于当前K线，向上处理
+					break;
+				}
+			}
+			itH = ++(vBH.rbegin());	// 被包含K线的上一根K线
+			if (process == 1) {
+				// 向上处理
+				if (itH != vBH.rend() && pHigh[*itH] > pHigh[vBH.back()]) {
+					// 前两根K线向下，新K线先向下再向上
+					int preL = vBL.back();
+					vBL.pop_back();
+					vBL.push_back(i);
+					vBH.push_back(i);
+					vBL.push_back(preL);
+				}
+				else {
+					// 前两根K线向上，合并被包含K线向上
+					vBH.pop_back();
+					vBH.push_back(i);
+				}
 			}
 			else {
-				// 向下处理，取两根Ｋ线中的最低点为低点，次高点为高点
-				pOut[nL] -= 2;
-				pOut[i] = 2;
-				nL = i;
-				fL = pLow[nL];
+				// 向下处理
+				if (itH != vBH.rend() && pHigh[*itH] > pHigh[vBH.back()]) {
+					// 前两根K线向下，合并被包含K线向下
+					vBL.pop_back();
+					vBL.push_back(i);
+				}
+				else {
+					// 前两根K线向上，新K线先向上再向下
+					int preH = vBH.back();
+					vBH.pop_back();
+					vBH.push_back(i);
+					vBH.push_back(preH);
+					vBL.push_back(i);
+				}
 			}
 		}
-		else if (fL <= pLow[i] && pHigh[i] <= fH) {
+		else if (pLow[vBL.back()] <= pLow[i] && pHigh[i] <= pHigh[vBH.back()]) {
 			// 上一根K线包含当前K线
-			if (fPreH < fH) {
-				// 第一根高点比其前一根具有非包含关系K线的高点高
-				// 向上处理，取两根Ｋ线中的最高点为高点，次低点为低点
-				pOut[nL] -= 2;
-				pOut[i] = 2;
-				nL = i;
-				fL = pLow[nL];
+			auto it = ++(vBH.rbegin());	// // 上一根K线的上一根
+			if (it != vBH.rend() && pHigh[vBH.back()] < pHigh[*it]) {
+				// 上一根K线高点低于其前一根的高点，向下处理
+				vBH.pop_back();
+				vBH.push_back(i);
 			}
 			else {
-				// 向下处理，取两根Ｋ线中的最低点为低点，次高点为高点
-				pOut[nH] -= 1;
-				pOut[i] = 1;
-				nH = i;
-				fH = pHigh[nH];
+				// 向上处理
+				vBL.pop_back();
+				vBL.push_back(i);
 			}
 		}
 		else {
 			// 没有包含关系
-			fPreH = fH;
-			pOut[i] = 3;
-			nH = i;
-			fH = pHigh[nH];
-			nL = i;
-			fL = pLow[nL];
+			vBH.push_back(i);
+			vBL.push_back(i);
 		}
 	}
 
 	int nBState = 0;	// 笔的状态，0=未定，1=向上，-1=向下
-	int nFState = 0;	// 分形状态，0=构造中，1=延伸为笔
-	int szH[5];	// K线高点
-	int szL[5];	// K线低点
-	int nKSpan = ReadKLines(5, -1, nCount, pOut, szH, szL);	// 待处理K线的数量
-	bool bRunning = true;
+	std::vector<int> vF;	// 分型列表，>0=顶分型的K线编号（经包含处理后），<0=-底分型的K线编号
 
-	// 标记笔的高低点
-	for (; bRunning; ) {
+	// 标记分型
+	for (size_t i = 0; i + 1 < vBH.size(); ++i) {
 		switch (nBState) {
-		case 1:	// 向上的笔
-			if (nFState) {
-				// 1=延伸为笔
-				for (int i = 0; i + 1 < nKSpan; ++i) {
-					if (pHigh[szH[i]] > pHigh[szH[i + 1]]) {
-						// 顶分型
-						if (pHigh[szH[i]] > pHigh[nH]) {
-							nH = szH[i];
-						}
-						int nRemains = nKSpan - i;
-						if (i > 0) {
-							for (int j = 0; j < nRemains; ++j) {
-								szH[j] = szH[i + j];
-								szL[j] = szL[i + j];
-							}
-						}
-						int n = (szH[nRemains - 1] > szL[nRemains - 1]) ? szH[nRemains - 1] : szL[nRemains - 1];
-						nKSpan = ReadKLines(5 - nRemains, n, nCount, pOut, szH + nRemains, szL + nRemains) + nRemains;
-						nFState = 0;	// 顶分型构造中
-						break;
-					}
-				}
-				if (nFState) {
-					// 继续延伸
-					int i = nKSpan - 1;
-					if (pHigh[szH[i]] > pHigh[nH]) {
-						nH = szH[i];
-					}
-					szH[0] = szH[i];
-					szL[0] = szL[i];
-					int n = (szH[0] > szL[0]) ? szH[0] : szL[0];
-					nKSpan = ReadKLines(4, n, nCount, pOut, szH + 1, szL + 1) + 1;
-					if (nKSpan <= 1) {
-						pOut[nH] = 1;
-						bRunning = false;
-					}
-				}
-			}
-			else {
-				// 0=顶分型构造中
-				if (nKSpan >= 4 && pHigh[szH[1]] > pHigh[szH[2]] && pHigh[szH[2]] > pHigh[szH[3]]) {
-					// 4根连续向下K线
-					if (nKSpan >= 5 && pHigh[szH[3]] > pHigh[szH[4]]) {
-						// 5根连续向下K线
-						pOut[nH] = 1;	// 向下笔的起点
-						nL = szL[4];
-						szH[0] = szH[4];
-						szL[0] = szL[4];
-						int n = (szH[0] > szL[0]) ? szH[0] : szL[0];
-						nKSpan = ReadKLines(4, n, nCount, pOut, szH + 1, szL + 1) + 1;
-						nBState = -1;	// 向下笔
-						nFState = 1;	// 延伸为笔
-					}
-					else if (szL[3] - szH[0] >= 4) {
-						// 新笔：不考虑包含关系，顶分型最高K线和底分型最低K线之间至少有3根K线
-						pOut[nH] = 1;	// 向下笔的起点
-						int i = 3;
-						nL = szL[i];
-						int nRemains = nKSpan - i;
-						for (int j = 0; j < nRemains; ++j) {
-							szH[j] = szH[i + j];
-							szL[j] = szL[i + j];
-						}
-						int n = (szH[nRemains - 1] > szL[nRemains - 1]) ? szH[nRemains - 1] : szL[nRemains - 1];
-						nKSpan = ReadKLines(5 - nRemains, n, nCount, pOut, szH + nRemains, szL + nRemains) + nRemains;
-						nBState = -1;	// 向下笔
-						nFState = 1;	// 延伸为笔
-					}
-				}
-				if (!nFState) {
-					// 中继顶分型
-					for (int i = 1; i + 1 < nKSpan; ++i) {
-						if (pLow[szL[i]] < pLow[szL[i + 1]]) {
-							// 底分型
-							int nRemains = nKSpan - i - 1;
-							for (int j = 0; j < nRemains; ++j) {
-								szH[j] = szH[i + 1 + j];
-								szL[j] = szL[i + 1 + j];
-							}
-							int n = (szH[nRemains - 1] > szL[nRemains - 1]) ? szH[nRemains - 1] : szL[nRemains - 1];
-							nKSpan = ReadKLines(5 - nRemains, n, nCount, pOut, szH + nRemains, szL + nRemains) + nRemains;
-							nFState = 1;	// 向上笔继续延伸
-							break;
-						}
-					}
-					if (!nFState) {
-						// 分形构造中终止
-						pOut[nH] = 1;
-						bRunning = false;
-					}
-				}
+		case 1:	// 向上
+			if (pHigh[vBH[i]] > pHigh[vBH[i + 1]]) {
+				// 顶分型
+				vF.push_back(i);
+				nBState = -1;	// 向下
 			}
 			break;
-		case -1:	// 向下的笔
-			if (nFState) {
-				// 1=延伸为笔
-				for (int i = 0; i + 1 < nKSpan; ++i) {
-					if (pLow[szL[i]] < pLow[szL[i + 1]]) {
-						// 底分型
-						if (pLow[szL[i]] < pLow[nL]) {
-							nL = szL[i];
-						}
-						int nRemains = nKSpan - i;
-						if (i > 0) {
-							for (int j = 0; j < nRemains; ++j) {
-								szH[j] = szH[i + j];
-								szL[j] = szL[i + j];
-							}
-						}
-						int n = (szH[nRemains - 1] > szL[nRemains - 1]) ? szH[nRemains - 1] : szL[nRemains - 1];
-						nKSpan = ReadKLines(5 - nRemains, n, nCount, pOut, szH + nRemains, szL + nRemains) + nRemains;
-						nFState = 0;	// 底分型构造中
-						break;
-					}
-				}
-				if (nFState) {
-					// 继续延伸
-					int i = nKSpan - 1;
-					if (pLow[szL[i]] < pLow[nL]) {
-						nL = szL[i];
-					}
-					szH[0] = szH[i];
-					szL[0] = szL[i];
-					int n = (szH[0] > szL[0]) ? szH[0] : szL[0];
-					nKSpan = ReadKLines(4, n, nCount, pOut, szH + 1, szL + 1) + 1;
-					if (nKSpan <= 1) {
-						pOut[nL] = -1;
-						bRunning = false;
-					}
-				}
-			}
-			else {
-				// 0=底分型构造中
-				if (nKSpan >= 4 && pLow[szL[1]] < pLow[szL[2]] && pLow[szL[2]] < pLow[szL[3]]) {
-					// 4根连续向上K线
-					if (nKSpan >= 5 && pLow[szL[3]] < pLow[szL[4]]) {
-						// 5根连续向上K线
-						pOut[nL] = -1;	// 向上笔的起点
-						nH = szH[4];
-						szH[0] = szH[4];
-						szL[0] = szL[4];
-						int n = (szH[0] > szL[0]) ? szH[0] : szL[0];
-						nKSpan = ReadKLines(4, n, nCount, pOut, szH + 1, szL + 1) + 1;
-						nBState = 1;	// 向上笔
-						nFState = 1;	// 延伸为笔
-					}
-					else if (szH[3] - szL[0] >= 4) {
-						// 新笔：不考虑包含关系，底分型最低K线和顶分型最高K线之间至少有3根K线
-						pOut[nL] = -1;	// 向上笔的起点
-						int i = 3;
-						nH = szH[i];
-						int nRemains = nKSpan - i;
-						for (int j = 0; j < nRemains; ++j) {
-							szH[j] = szH[i + j];
-							szL[j] = szL[i + j];
-						}
-						int n = (szH[nRemains - 1] > szL[nRemains - 1]) ? szH[nRemains - 1] : szL[nRemains - 1];
-						nKSpan = ReadKLines(5 - nRemains, n, nCount, pOut, szH + nRemains, szL + nRemains) + nRemains;
-						nBState = 1;	// 向上笔
-						nFState = 1;	// 延伸为笔
-					}
-				}
-				if (!nFState) {
-					// 中继底分型
-					for (int i = 1; i + 1 < nKSpan; ++i) {
-						if (pHigh[szH[i]] > pHigh[szH[i + 1]]) {
-							// 顶分型
-							int nRemains = nKSpan - i - 1;
-							for (int j = 0; j < nRemains; ++j) {
-								szH[j] = szH[i + 1 + j];
-								szL[j] = szL[i + 1 + j];
-							}
-							int n = (szH[nRemains - 1] > szL[nRemains - 1]) ? szH[nRemains - 1] : szL[nRemains - 1];
-							nKSpan = ReadKLines(5 - nRemains, n, nCount, pOut, szH + nRemains, szL + nRemains) + nRemains;
-							nFState = 1;	// 向下笔继续延伸
-							break;
-						}
-					}
-					if (!nFState) {
-						// 分形构造中终止
-						pOut[nL] = -1;
-						bRunning = false;
-					}
-				}
+		case -1:	// 向下
+			if (pLow[vBL[i]] < pLow[vBL[i + 1]]) {
+				// 底分型
+				vF.push_back(-static_cast<int>(i));
+				nBState = 1;	// 向上
 			}
 			break;
 		default:	// 0=未定
-			if (nKSpan >= 5) {
-				int nRemains = 1;	// 保留最后一根K线
-				if (pHigh[szH[0]] < pHigh[szH[1]] && pHigh[szH[1]] < pHigh[szH[2]] && pHigh[szH[2]] < pHigh[szH[3]] && pHigh[szH[3]] < pHigh[szH[4]]) {
-					// 5根连续向上K线
-					nH = szH[4];
-					nL = szL[0];
-					pOut[nL] = -1;	// 向上笔的起点
+			if (i + 1 < vBH.size()) {
+				if (pHigh[vBH[i]] < pHigh[vBH[i + 1]]) {
 					nBState = 1;
-					nFState = 1;
-				}
-				else if (pLow[szL[0]] > pLow[szL[1]] && pLow[szL[1]] > pLow[szL[2]] && pLow[szL[2]] > pLow[szL[3]] && pLow[szL[3]] > pLow[szL[4]]) {
-					// 5根连续向下K线
-					nH = szH[0];
-					nL = szL[4];
-					pOut[nH] = 1;	// 向下笔的起点
-					nBState = -1;
-					nFState = 1;
 				}
 				else {
-					nRemains = nKSpan - 1;	// 去掉第一根K线
+					nBState = -1;
 				}
-				for (int j = 0; j < nRemains; ++j) {
-					szH[j] = szH[j + nKSpan - nRemains];
-					szL[j] = szL[j + nKSpan - nRemains];
-				}
-				int n = (szH[nRemains - 1] > szL[nRemains - 1]) ? szH[nRemains - 1] : szL[nRemains - 1];
-				nKSpan = ReadKLines(5 - nRemains, n, nCount, pOut, szH + nRemains, szL + nRemains) + nRemains;
-			}
-			else {
-				bRunning = false;
 			}
 			break;
+		}
+	}
+
+	std::vector<int> vFValid;	// 仅有效笔对应的分型列表，>0=顶分型的K线编号（经包含处理后），<0=-底分型的K线编号
+	size_t nInvalidFrom = 0;	// 无效笔开始的K线编号（经包含处理后）
+
+	// 标记有效分型（对应有效笔）
+	for (size_t nInvalidTo = nInvalidFrom; nInvalidTo + 1 < vF.size();) {
+		// 从from开始查找第一个有效笔[to, to+1]，或至少连续三段无效笔[from X from+1 X from+2 X from+3]
+		if (nInvalidTo <= nInvalidFrom + 2 && !IsValidBi(vF[nInvalidTo], vF[nInvalidTo + 1], vBH, vBL, pHigh)) {
+			++nInvalidTo;
+			continue;
+		}
+		switch (nInvalidTo - nInvalidFrom) {
+			// 连续无效笔的数量
+		case 0:
+			// [back?, from(to), to+1]
+			vFValid.push_back(vF[nInvalidTo]);
+			nInvalidFrom = ++nInvalidTo;
+			break;
+		case 1:
+			if (!vFValid.empty()) {
+				// [back, from X to, to+1]
+				if (CanExtend(vFValid.back(), vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
+					// to优于back
+					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
+						// to+1优于from
+						vFValid.pop_back();
+						vFValid.push_back(vF[nInvalidTo]);
+						nInvalidFrom = ++nInvalidTo;
+					}
+					else {
+						// from优于to+1，from和to冲突
+						for (auto it = vFValid.rbegin();;) {
+							if (++it == vFValid.rend()) {
+								// 择一保留，选择保留to
+								vFValid.pop_back();
+								vFValid.push_back(vF[nInvalidTo]);
+								nInvalidFrom = ++nInvalidTo;
+								break;
+							}
+							if (!CanExtend(*it, vF[nInvalidFrom], vBH, vBL, pHigh, pLow)) {
+								// 删除from，保留to
+								vFValid.pop_back();
+								vFValid.push_back(vF[nInvalidTo]);
+								nInvalidFrom = ++nInvalidTo;
+								break;
+							}
+							if (++it == vFValid.rend()) {
+								// 择一保留，选择保留to
+								vFValid.pop_back();
+								vFValid.push_back(vF[nInvalidTo]);
+								nInvalidFrom = ++nInvalidTo;
+								break;
+							}
+							if (!CanExtend(*it, vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
+								// 保留from, 删除to
+								vFValid.push_back(vF[nInvalidFrom]);
+								nInvalidTo = nInvalidFrom + 3;
+								nInvalidFrom = nInvalidTo;
+								break;
+							}
+						}
+					}
+				}
+				else {
+					// back优于to
+					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
+						// to+1优于from
+						nInvalidFrom = ++nInvalidTo;
+					}
+					else {
+						// from优于to+1
+						vFValid.push_back(vF[nInvalidFrom]);
+						nInvalidTo = nInvalidFrom + 3;
+						nInvalidFrom = nInvalidTo;
+					}
+				}
+			}
+			else {
+				// [from X to, to+1]
+				if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
+					// to+1优于from
+					nInvalidFrom = ++nInvalidTo;
+				}
+				else {
+					// from优于to+1
+					vFValid.push_back(vF[nInvalidFrom]);
+					nInvalidTo = nInvalidFrom + 3;
+					nInvalidFrom = nInvalidTo;
+				}
+			}
+			break;
+		case 2:
+			if (!vFValid.empty()) {
+				// [back, from X from+1 X to, to+1]
+				if (CanExtend(vFValid.back(), vF[nInvalidFrom + 1], vBH, vBL, pHigh, pLow)) {
+					// from+1优于back
+					if (CanExtend(vF[nInvalidFrom + 1], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
+						// to+1优于from+1
+						vFValid.pop_back();
+						nInvalidFrom = ++nInvalidTo;
+					}
+					else {
+						// from+1优于to+1
+						vFValid.pop_back();
+						vFValid.push_back(vF[nInvalidFrom + 1]);
+						nInvalidFrom += 4;
+						nInvalidTo = nInvalidFrom;
+					}
+				}
+				else {
+					// back优于from+1
+					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
+						// to优于from
+						vFValid.push_back(vF[nInvalidTo]);
+						nInvalidFrom = ++nInvalidTo;
+					}
+					else {
+						// from优于to
+						vFValid.push_back(vF[nInvalidFrom]);
+						nInvalidFrom = ++nInvalidTo;
+					}
+				}
+			}
+			else {
+				// [from X from+1 X to, to+1]
+				if (CanExtend(vF[nInvalidFrom + 1], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
+					// to+1优于from+1
+					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
+						// to优于from
+						vFValid.push_back(vF[nInvalidTo]);
+						nInvalidFrom = ++nInvalidTo;
+					}
+					else {
+						// from优于to
+						vFValid.push_back(vF[nInvalidFrom]);
+						nInvalidFrom = ++nInvalidTo;
+					}
+				}
+				else {
+					// from+1优于to+1
+					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
+						// to优于from，to和from+1冲突
+						vFValid.push_back(vF[nInvalidTo]);
+						nInvalidFrom = ++nInvalidTo;
+					}
+					else {
+						// from优于to，from和from+1冲突
+						vFValid.push_back(vF[nInvalidFrom]);
+						nInvalidFrom = ++nInvalidTo;
+					}
+				}
+			}
+			break;
+		case 3:
+			if (!vFValid.empty()) {
+				// [back, from X from+1 X ... X to ? to+1]
+				if (CanExtend(vFValid.back(), vF[nInvalidFrom + 1], vBH, vBL, pHigh, pLow)) {
+					// from+1优于back
+					if (CanExtend(vF[nInvalidFrom], vF[nInvalidFrom + 2], vBH, vBL, pHigh, pLow)) {
+						// from+2优于from
+						vFValid.pop_back();
+						nInvalidTo = ++nInvalidFrom;
+					}
+					else {
+						// from优于from+2，但from和from+1冲突
+						for (auto it = vFValid.rbegin();;) {
+							if (++it == vFValid.rend()) {
+								// 择一保留，选择保留from+1
+								vFValid.pop_back();
+								nInvalidTo = ++nInvalidFrom;
+								break;
+							}
+							if (!CanExtend(*it, vF[nInvalidFrom], vBH, vBL, pHigh, pLow)) {
+								// 保留from+1, 删除from
+								vFValid.pop_back();
+								nInvalidTo = ++nInvalidFrom;
+								break;
+							}
+							if (++it == vFValid.rend()) {
+								// 择一保留，选择保留from+1
+								vFValid.pop_back();
+								nInvalidTo = ++nInvalidFrom;
+								break;
+							}
+							if (!CanExtend(*it, vF[nInvalidFrom + 1], vBH, vBL, pHigh, pLow)) {
+								// 保留from，删除from+1
+								vFValid.push_back(vF[nInvalidFrom]);
+								nInvalidFrom += 3;
+								nInvalidTo = nInvalidFrom;
+								break;
+							}
+						}
+					}
+				}
+				else {
+					// back优于from+1
+					if (CanExtend(vF[nInvalidFrom], vF[nInvalidFrom + 2], vBH, vBL, pHigh, pLow)) {
+						// from+2优于from
+						nInvalidFrom += 2;
+						nInvalidTo = nInvalidFrom;
+					}
+					else {
+						// from优于from+2
+						vFValid.push_back(vF[nInvalidFrom]);
+						nInvalidFrom += 3;
+						nInvalidTo = nInvalidFrom;
+					}
+				}
+			}
+			else {
+				// [from X from+1 X ... X to, to+1]
+				if (CanExtend(vF[nInvalidFrom], vF[nInvalidFrom + 2], vBH, vBL, pHigh, pLow)) {
+					// from+2优于from
+					nInvalidFrom += 2;
+					nInvalidTo = nInvalidFrom;
+				}
+				else {
+					// from优于from+2
+					if (CanExtend(vF[nInvalidFrom + 1], vF[nInvalidFrom + 3], vBH, vBL, pHigh, pLow)) {
+						// from+3优于from+1
+						if (IsValidBi(vF[nInvalidFrom], vF[nInvalidFrom + 3], vBH, vBL, pHigh)) {
+							vFValid.push_back(vF[nInvalidFrom]);
+							nInvalidFrom += 3;
+							nInvalidTo = nInvalidFrom;
+						}
+						else {
+							nInvalidFrom += 3;
+							nInvalidTo = nInvalidFrom;
+						}
+					}
+					else {
+						// from+1优于from+3，from与from+1冲突
+						nInvalidTo = ++nInvalidFrom;
+						if (IsValidBi(vF[nInvalidFrom + 1], vF[nInvalidFrom + 4], vBH, vBL, pHigh)) {
+							vFValid.push_back(vF[nInvalidFrom + 1]);
+							nInvalidFrom += 4;
+							nInvalidTo = nInvalidFrom;
+						}
+						else {
+							nInvalidFrom += 4;
+							nInvalidTo = nInvalidFrom;
+						}
+					}
+				}
+			}
+			break;
+		default:
+			assert(0);
+			break;
+		}
+	}
+	for (size_t i = nInvalidFrom; i < vF.size(); i += 2) {
+		if (i + 2 < vF.size()) {
+			if (!CanExtend(vF[i], vF[i + 2], vBH, vBL, pHigh, pLow)) {
+				vFValid.push_back(vF[i]);
+				break;
+			}
+		}
+		else {
+			vFValid.push_back(vF[i]);
+			break;
+		}
+	}
+	for (auto it = vFValid.begin(); it != vFValid.end(); ++it) {
+		if (*it > 0) {
+			// 顶分型
+			pOut[vBH[*it]] = 1;
+		}
+		else {
+			pOut[vBL[-(*it)]] = -1;
 		}
 	}
 }
