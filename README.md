@@ -17,11 +17,12 @@
 
 ```text
 {参数RATE：单边交易费率百分数}
-DLL:=TDXDLL1(11,H,L,RATE); {K线交易使用11号接口替换原来的1号接口}
+DLL:=TDXDLL1(1,H,L,RATE); {K线交易使用11号接口替换原来的1号接口}
 HIB:=TDXDLL1(2,DLL,H,L); {中枢高点}
 LOB:=TDXDLL1(3,DLL,H,L); {中枢低点}
 SIG:=TDXDLL1(4,DLL,H,L); {中枢起终点}
 BSP:=TDXDLL1(5,DLL,L,H); {二三类买卖点}
+{SLP:=TDXDLL1(7,DLL,H,L); {线段变化百分率}
 SLP:=TDXDLL1(8,DLL,H,L); {线段斜率}
 MA20:MA(CLOSE,20), COLORMAGENTA;
 MA10:MA(CLOSE,10), COLORYELLOW;
