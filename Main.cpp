@@ -694,42 +694,32 @@ void Func6(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
   }
 }
 
-//=============================================================================
-// 输出函数7号：线段强度分析指标
-//=============================================================================
-
-void Func7(int nCount, float *pOut, float *pIn, float *pHigh, float *pLow)
+// 在pIn标记的高低点处（高=1，低=-1），输出从上一个标记点到当前点的变化率（百分数）
+void Func7(int nCount, float* pOut, float* pIn, float* pHigh, float* pLow)
 {
-  int nPrevTop = 0, nPrevBot = 0;
+	int x = 0;
+	int i = 0;
 
-  for (int i = 0; i < nCount; i++)
-  {
-	// 遇到线段高点
-	if (pIn[i-1] == 1)
-	{
-	  // 标记高点位置
-	  nPrevTop = i - 1;
+	for (; i < nCount; ++i) {
+		pOut[i] = 0;
+		if (pIn[i] < -0.5 || 0.5 < pIn[i]) {
+			x = i;
+			break;
+		}
 	}
-	// 遇到线段低点
-	else if (pIn[i-1] == -1)
-	{
-	  // 标记低点位置
-	  nPrevBot = i - 1;
+	for (++i; i < nCount; ++i) {
+		if (pIn[i] < -0.5) {
+			pOut[i] = (pLow[i] - pHigh[x]) / pHigh[x] * 100;
+			x = i;
+		}
+		else if (0.5 < pIn[i]) {
+			pOut[i] = (pHigh[i] - pLow[x]) / pLow[x] * 100;
+			x = i;
+		}
+		else {
+			pOut[i] = 0;
+		}
 	}
-
-	// 上升线段计算模式
-	if (pIn[i] == 1)
-	{
-	  // 计算上升线段斜率
-	  pOut[i] = (pHigh[i] - pLow[nPrevBot]) / pLow[nPrevBot] * 100;
-	}
-	// 下降线段计算模式
-	else if (pIn[i] == -1)
-	{
-	  // 计算上升线段斜率
-	  pOut[i] = (pLow[i] - pHigh[nPrevTop]) / pHigh[nPrevTop] * 100;
-	}
-  }
 }
 
 // 在pIn标记的高低点处（高=1，低=-1），输出从上一个标记点到当前点的高低连线斜率
