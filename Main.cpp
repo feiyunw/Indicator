@@ -58,7 +58,7 @@ bool IsValidBi(int f1, int f2, const std::vector<int>& vBH, const std::vector<in
 			return false;
 		}
 		// 顶分型最高K线的区间高于底分型最低K线的区间
-		if (pHigh[vBH[f1]] <= pHigh[vBL[-f2]]) {
+		if (pHigh[vBH[f1]] < pHigh[vBL[-f2]]) {
 			return false;
 		}
 	}
@@ -68,7 +68,7 @@ bool IsValidBi(int f1, int f2, const std::vector<int>& vBH, const std::vector<in
 			return false;
 		}
 		// 顶分型最高K线的区间高于底分型最低K线的区间
-		if (pHigh[vBH[f2]] <= pHigh[vBL[-f1]]) {
+		if (pHigh[vBH[f2]] < pHigh[vBL[-f1]]) {
 			return false;
 		}
 	}
@@ -199,275 +199,89 @@ void Func1(int nCount, float* pOut, float* pHigh, float* pLow, float* c)
 		}
 	}
 
-	std::vector<int> vFValid;	// 仅有效笔对应的分型列表，>0=顶分型的K线编号（经包含处理后），<0=-底分型的K线编号
-	size_t nInvalidFrom = 0;	// 无效笔开始的K线编号（经包含处理后）
+	std::vector<int> vFValid;	// 有效笔对应的分型列表，保存分型在vF的索引
 
 	// 标记有效分型（对应有效笔）
-	for (size_t nInvalidTo = nInvalidFrom; nInvalidTo + 1 < vF.size();) {
-		// 从from开始查找第一个有效笔[to, to+1]，或至少连续三段无效笔[from X from+1 X from+2 X from+3]
-		if (nInvalidTo <= nInvalidFrom + 2 && !IsValidBi(vF[nInvalidTo], vF[nInvalidTo + 1], vBH, vBL, pHigh)) {
-			++nInvalidTo;
-			continue;
-		}
-		switch (nInvalidTo - nInvalidFrom) {
-			// 连续无效笔的数量
-		case 0:
-			// [back?, from(to), to+1]
-			vFValid.push_back(vF[nInvalidTo]);
-			nInvalidFrom = ++nInvalidTo;
-			break;
-		case 1:
-			if (!vFValid.empty()) {
-				// [back, from X to, to+1]
-				if (CanExtend(vFValid.back(), vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
-					// to优于back
-					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
-						// to+1优于from
-						vFValid.pop_back();
-						vFValid.push_back(vF[nInvalidTo]);
-						nInvalidFrom = ++nInvalidTo;
-					}
-					else {
-						// from优于to+1，from和to冲突
-						for (auto it = vFValid.rbegin();;) {
-							if (++it == vFValid.rend()) {
-								// 择一保留，选择保留to
-								vFValid.pop_back();
-								vFValid.push_back(vF[nInvalidTo]);
-								nInvalidFrom = ++nInvalidTo;
-								break;
-							}
-							if (!CanExtend(*it, vF[nInvalidFrom], vBH, vBL, pHigh, pLow)) {
-								// 删除from，保留to
-								vFValid.pop_back();
-								vFValid.push_back(vF[nInvalidTo]);
-								nInvalidFrom = ++nInvalidTo;
-								break;
-							}
-							if (++it == vFValid.rend()) {
-								// 择一保留，选择保留to
-								vFValid.pop_back();
-								vFValid.push_back(vF[nInvalidTo]);
-								nInvalidFrom = ++nInvalidTo;
-								break;
-							}
-							if (!CanExtend(*it, vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
-								// 保留from, 删除to
-								vFValid.push_back(vF[nInvalidFrom]);
-								nInvalidTo = nInvalidFrom + 3;
-								nInvalidFrom = nInvalidTo;
-								break;
-							}
-						}
-					}
+	for (size_t i = 0; i < vF.size();) {
+		if (!vFValid.empty()) {
+			if (i + 1 < vF.size()) {
+				// [back X i ? i + 1]，X=不构成笔，问号=待定
+				if (CanExtend(vF[vFValid.back()], vF[i + 1], vBH, vBL, pHigh, pLow)) {
+					// i+1优于back
+					vFValid.pop_back();
+					vFValid.push_back(i + 1);
 				}
-				else {
-					// back优于to
-					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
-						// to+1优于from
-						nInvalidFrom = ++nInvalidTo;
-					}
-					else {
-						// from优于to+1
-						vFValid.push_back(vF[nInvalidFrom]);
-						nInvalidTo = nInvalidFrom + 3;
-						nInvalidFrom = nInvalidTo;
-					}
-				}
+				// else: back优于i+1，忽略i和i+1
+				i += 2;
 			}
 			else {
-				// [from X to, to+1]
-				if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
-					// to+1优于from
-					nInvalidFrom = ++nInvalidTo;
-				}
-				else {
-					// from优于to+1
-					vFValid.push_back(vF[nInvalidFrom]);
-					nInvalidTo = nInvalidFrom + 3;
-					nInvalidFrom = nInvalidTo;
-				}
-			}
-			break;
-		case 2:
-			if (!vFValid.empty()) {
-				// [back, from X from+1 X to, to+1]
-				if (CanExtend(vFValid.back(), vF[nInvalidFrom + 1], vBH, vBL, pHigh, pLow)) {
-					// from+1优于back
-					if (CanExtend(vF[nInvalidFrom + 1], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
-						// to+1优于from+1
-						vFValid.pop_back();
-						nInvalidFrom = ++nInvalidTo;
-					}
-					else {
-						// from+1优于to+1
-						vFValid.pop_back();
-						vFValid.push_back(vF[nInvalidFrom + 1]);
-						nInvalidFrom += 4;
-						nInvalidTo = nInvalidFrom;
-					}
-				}
-				else {
-					// back优于from+1
-					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
-						// to优于from
-						vFValid.push_back(vF[nInvalidTo]);
-						nInvalidFrom = ++nInvalidTo;
-					}
-					else {
-						// from优于to
-						vFValid.push_back(vF[nInvalidFrom]);
-						nInvalidFrom = ++nInvalidTo;
-					}
-				}
-			}
-			else {
-				// [from X from+1 X to, to+1]
-				if (CanExtend(vF[nInvalidFrom + 1], vF[nInvalidTo + 1], vBH, vBL, pHigh, pLow)) {
-					// to+1优于from+1
-					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
-						// to优于from
-						vFValid.push_back(vF[nInvalidTo]);
-						nInvalidFrom = ++nInvalidTo;
-					}
-					else {
-						// from优于to
-						vFValid.push_back(vF[nInvalidFrom]);
-						nInvalidFrom = ++nInvalidTo;
-					}
-				}
-				else {
-					// from+1优于to+1
-					if (CanExtend(vF[nInvalidFrom], vF[nInvalidTo], vBH, vBL, pHigh, pLow)) {
-						// to优于from，to和from+1冲突
-						vFValid.push_back(vF[nInvalidTo]);
-						nInvalidFrom = ++nInvalidTo;
-					}
-					else {
-						// from优于to，from和from+1冲突
-						vFValid.push_back(vF[nInvalidFrom]);
-						nInvalidFrom = ++nInvalidTo;
-					}
-				}
-			}
-			break;
-		case 3:
-			if (!vFValid.empty()) {
-				// [back, from X from+1 X ... X to ? to+1]
-				if (CanExtend(vFValid.back(), vF[nInvalidFrom + 1], vBH, vBL, pHigh, pLow)) {
-					// from+1优于back
-					if (CanExtend(vF[nInvalidFrom], vF[nInvalidFrom + 2], vBH, vBL, pHigh, pLow)) {
-						// from+2优于from
-						vFValid.pop_back();
-						nInvalidTo = ++nInvalidFrom;
-					}
-					else {
-						// from优于from+2，但from和from+1冲突
-						for (auto it = vFValid.rbegin();;) {
-							if (++it == vFValid.rend()) {
-								// 择一保留，选择保留from+1
-								vFValid.pop_back();
-								nInvalidTo = ++nInvalidFrom;
-								break;
-							}
-							if (!CanExtend(*it, vF[nInvalidFrom], vBH, vBL, pHigh, pLow)) {
-								// 保留from+1, 删除from
-								vFValid.pop_back();
-								nInvalidTo = ++nInvalidFrom;
-								break;
-							}
-							if (++it == vFValid.rend()) {
-								// 择一保留，选择保留from+1
-								vFValid.pop_back();
-								nInvalidTo = ++nInvalidFrom;
-								break;
-							}
-							if (!CanExtend(*it, vF[nInvalidFrom + 1], vBH, vBL, pHigh, pLow)) {
-								// 保留from，删除from+1
-								vFValid.push_back(vF[nInvalidFrom]);
-								nInvalidFrom += 3;
-								nInvalidTo = nInvalidFrom;
-								break;
-							}
-						}
-					}
-				}
-				else {
-					// back优于from+1
-					if (CanExtend(vF[nInvalidFrom], vF[nInvalidFrom + 2], vBH, vBL, pHigh, pLow)) {
-						// from+2优于from
-						nInvalidFrom += 2;
-						nInvalidTo = nInvalidFrom;
-					}
-					else {
-						// from优于from+2
-						vFValid.push_back(vF[nInvalidFrom]);
-						nInvalidFrom += 3;
-						nInvalidTo = nInvalidFrom;
-					}
-				}
-			}
-			else {
-				// [from X from+1 X ... X to, to+1]
-				if (CanExtend(vF[nInvalidFrom], vF[nInvalidFrom + 2], vBH, vBL, pHigh, pLow)) {
-					// from+2优于from
-					nInvalidFrom += 2;
-					nInvalidTo = nInvalidFrom;
-				}
-				else {
-					// from优于from+2
-					if (CanExtend(vF[nInvalidFrom + 1], vF[nInvalidFrom + 3], vBH, vBL, pHigh, pLow)) {
-						// from+3优于from+1
-						if (IsValidBi(vF[nInvalidFrom], vF[nInvalidFrom + 3], vBH, vBL, pHigh)) {
-							vFValid.push_back(vF[nInvalidFrom]);
-							nInvalidFrom += 3;
-							nInvalidTo = nInvalidFrom;
-						}
-						else {
-							nInvalidFrom += 3;
-							nInvalidTo = nInvalidFrom;
-						}
-					}
-					else {
-						// from+1优于from+3，from与from+1冲突
-						nInvalidTo = ++nInvalidFrom;
-						if (IsValidBi(vF[nInvalidFrom + 1], vF[nInvalidFrom + 4], vBH, vBL, pHigh)) {
-							vFValid.push_back(vF[nInvalidFrom + 1]);
-							nInvalidFrom += 4;
-							nInvalidTo = nInvalidFrom;
-						}
-						else {
-							nInvalidFrom += 4;
-							nInvalidTo = nInvalidFrom;
-						}
-					}
-				}
-			}
-			break;
-		default:
-			assert(0);
-			break;
-		}
-	}
-	for (size_t i = nInvalidFrom; i < vF.size(); i += 2) {
-		if (i + 2 < vF.size()) {
-			if (!CanExtend(vF[i], vF[i + 2], vBH, vBL, pHigh, pLow)) {
-				vFValid.push_back(vF[i]);
-				break;
+				++i;
 			}
 		}
 		else {
-			vFValid.push_back(vF[i]);
-			break;
+			if (i + 1 < vF.size()) {
+				if (IsValidBi(vF[i], vF[i + 1], vBH, vBL, pHigh)) {
+					// [i, i+1]，逗号=构成笔
+					vFValid.push_back(i);
+					vFValid.push_back(i + 1);
+					i += 2;
+				}
+				else {
+					// [i X i+1]
+					if (i + 2 < vF.size()) {
+						if (IsValidBi(vF[i + 1], vF[i + 2], vBH, vBL, pHigh)) {
+							// [i X i+1, i+2]
+							vFValid.push_back(i + 2);
+							i += 3;
+						}
+						else {
+							// [i X i+1 X i+2]
+							if (CanExtend(vF[i], vF[i + 2], vBH, vBL, pHigh, pLow)) {
+								// i+2优于i
+								i += 2;
+							}
+							else {
+								// i优于i+2
+								if (i + 3 < vF.size()) {
+									// [i X i+1 X i+2 ? i+3]
+									if (IsValidBi(vF[i], vF[i + 3], vBH, vBL, pHigh)) {
+										vFValid.push_back(i);
+										vFValid.push_back(i + 3);
+										i += 4;
+									}
+									else {
+										i += 3;
+									}
+								}
+								else {
+									i += 3;
+								}
+							}
+						}
+					}
+					else {
+						i += 2;
+					}
+				}
+			}
+			else {
+				++i;
+			}
+		}
+		if (!vFValid.empty()) {
+			for (; i < vF.size() && IsValidBi(vF[vFValid.back()], vF[i], vBH, vBL, pHigh); ++i) {
+				vFValid.push_back(i);
+			}
 		}
 	}
 	for (auto it = vFValid.begin(); it != vFValid.end(); ++it) {
-		if (*it > 0) {
+		if (vF[*it] > 0) {
 			// 顶分型
-			pOut[vBH[*it]] = 1;
+			pOut[vBH[vF[*it]]] = 1;
 		}
 		else {
-			pOut[vBL[-(*it)]] = -1;
+			// 底分型
+			pOut[vBL[-vF[*it]]] = -1;
 		}
 	}
 }
