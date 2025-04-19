@@ -17,6 +17,7 @@
  *****************************************************************************/
 
 #include "pch.h"
+#include <algorithm>
 #include <cassert>
 #include <vector>
 
@@ -54,21 +55,35 @@ bool IsValidBi(int f1, int f2, const std::vector<int>& vBH, const std::vector<in
 
 	if (f1 > 0) {
 		// 顶分型
-		if (-f2 - f1 < 3 || vBL[-f2] - vBH[f1] <= 3) {
+		if (-f2 < f1 + 3) {
+			// 顶底分型经过包含处理后，不允许共用K线
 			return false;
 		}
-		// 顶分型最高K线的区间高于底分型最低K线的区间
-		if (pHigh[vBH[f1]] < pHigh[vBL[-f2]]) {
+		int a = std::max(vBH[f1], vBL[f1]);
+		int b = std::min(vBH[-f2], vBL[-f2]);
+		if (b <= a + 3) {
+			// 顶分型最高K线和底分型最低K线之间，不考虑包含关系，至少有3根K线
+			return false;
+		}
+		if (pHigh[vBH[f1]] < pHigh[vBH[-f2]]) {
+			// 顶分型最高K线的区间至少部分高于底分型最低K线的区间
 			return false;
 		}
 	}
 	else {
 		// 底分型
-		if (f2 + f1 < 3 || vBH[f2] - vBL[-f1] <= 3) {
+		if (f2 < -f1 + 3) {
+			// 顶底分型经过包含处理后，不允许共用K线
 			return false;
 		}
-		// 顶分型最高K线的区间高于底分型最低K线的区间
-		if (pHigh[vBH[f2]] < pHigh[vBL[-f1]]) {
+		int a = std::max(vBH[-f1], vBL[-f1]);
+		int b = std::min(vBH[f2], vBL[f2]);
+		if (b <= a + 3) {
+			// 顶分型最高K线和底分型最低K线之间，不考虑包含关系，至少有3根K线
+			return false;
+		}
+		if (pHigh[vBH[f2]] < pHigh[vBH[-f1]]) {
+			// 顶分型最高K线的区间至少部分高于底分型最低K线的区间
 			return false;
 		}
 	}
@@ -91,70 +106,49 @@ void Func1(int nCount, float* pOut, float* pHigh, float* pLow, float* c)
 	vBL.reserve(nCount);
 	vBH.push_back(0);
 	vBL.push_back(0);
-	pOut[0] = 0;
 	for (int i = 1; i < nCount; ++i) {
-		pOut[i] = 0;
 		if (pLow[i] <= pLow[vBL.back()] && pHigh[vBH.back()] <= pHigh[i]) {
 			// 当前K线包含上一根K线
-			auto itH = vBH.rbegin();
-			auto itL = vBL.rbegin();
-			int process = 1;	// K线包含处理：1=向上；-1=向下
+			auto itH = ++(vBH.rbegin());
+			auto itL = ++(vBL.rbegin());
+			// 若当前K线包含之前连续多条K线，则处理同缠论不完全一致
 			for (; itH != vBH.rend() && itL != vBL.rend(); ++itH, ++itL) {
 				// 未被包含的前一根K线
 				if (pHigh[*itH] > pHigh[i]) {
 					// 高于当前K线，向下处理
-					process = -1;
+					vBL.pop_back();
+					vBL.push_back(i);
 					break;
 				}
 				if (pLow[*itL] < pLow[i]) {
 					// 低于当前K线，向上处理
+					vBH.pop_back();
+					vBH.push_back(i);
 					break;
 				}
 			}
-			itH = ++(vBH.rbegin());	// 被包含K线的上一根K线
-			if (process == 1) {
-				// 向上处理
-				if (itH != vBH.rend() && pHigh[*itH] > pHigh[vBH.back()]) {
-					// 前两根K线向下，新K线先向下再向上
-					int preL = vBL.back();
-					vBL.pop_back();
-					vBL.push_back(i);
-					vBH.push_back(i);
-					vBL.push_back(preL);
-				}
-				else {
-					// 前两根K线向上，合并被包含K线向上
-					vBH.pop_back();
-					vBH.push_back(i);
-				}
-			}
-			else {
-				// 向下处理
-				if (itH != vBH.rend() && pHigh[*itH] > pHigh[vBH.back()]) {
-					// 前两根K线向下，合并被包含K线向下
-					vBL.pop_back();
-					vBL.push_back(i);
-				}
-				else {
-					// 前两根K线向上，新K线先向上再向下
-					int preH = vBH.back();
-					vBH.pop_back();
-					vBH.push_back(i);
-					vBH.push_back(preH);
-					vBL.push_back(i);
-				}
-			}
+			// 若当前K线包含之前所有K线，则忽略当前K线
 		}
 		else if (pLow[vBL.back()] <= pLow[i] && pHigh[i] <= pHigh[vBH.back()]) {
 			// 上一根K线包含当前K线
-			auto it = ++(vBH.rbegin());	// // 上一根K线的上一根
-			if (it != vBH.rend() && pHigh[vBH.back()] < pHigh[*it]) {
-				// 上一根K线高点低于其前一根的高点，向下处理
-				vBH.pop_back();
-				vBH.push_back(i);
+			auto itH = ++(vBH.rbegin());
+			if (itH != vBH.rend()) {
+				// 比较上一根K线与其前一根不是包含关系的K线
+				if (pHigh[*itH] > pHigh[vBH.back()]) {
+					// 向下处理
+					vBH.pop_back();
+					vBH.push_back(i);
+				}
+				else {
+					// 向上处理
+					vBL.pop_back();
+					vBL.push_back(i);
+				}
 			}
 			else {
-				// 向上处理
+				// 若当前K线是第二根且被第一根包含，则用当前K线替换第一根
+				vBH.pop_back();
+				vBH.push_back(i);
 				vBL.pop_back();
 				vBL.push_back(i);
 			}
@@ -166,114 +160,92 @@ void Func1(int nCount, float* pOut, float* pHigh, float* pLow, float* c)
 		}
 	}
 
-	int nBState = 0;	// 笔的状态，0=未定，1=向上，-1=向下
 	std::vector<int> vF;	// 分型列表，>0=顶分型的K线编号（经包含处理后），<0=-底分型的K线编号
 
 	// 标记分型
-	for (size_t i = 0; i + 1 < vBH.size(); ++i) {
-		switch (nBState) {
-		case 1:	// 向上
-			if (pHigh[vBH[i]] > pHigh[vBH[i + 1]]) {
-				// 顶分型
-				vF.push_back(i);
-				nBState = -1;	// 向下
+	if (vBH.size() >= 6) {
+		bool bUp = false;	// 当前笔的状态，true=向上，false=向下
+		if (pHigh[vBH[0]] < pHigh[vBH[1]]) {
+			bUp = true;
+		}
+		for (size_t i = 1; i + 1 < vBH.size(); ++i) {
+			if (bUp) {
+				if (pHigh[vBH[i]] > pHigh[vBH[i + 1]]) {
+					// 顶分型
+					vF.push_back(i);
+					bUp = false;
+				}
 			}
-			break;
-		case -1:	// 向下
-			if (pLow[vBL[i]] < pLow[vBL[i + 1]]) {
-				// 底分型
-				vF.push_back(-static_cast<int>(i));
-				nBState = 1;	// 向上
-			}
-			break;
-		default:	// 0=未定
-			if (i + 1 < vBH.size()) {
+			else {
 				if (pHigh[vBH[i]] < pHigh[vBH[i + 1]]) {
-					nBState = 1;
-				}
-				else {
-					nBState = -1;
+					// 底分型
+					vF.push_back(-static_cast<int>(i));
+					bUp = true;
 				}
 			}
-			break;
 		}
 	}
 
 	std::vector<int> vFValid;	// 有效笔对应的分型列表，保存分型在vF的索引
+	size_t i = 0;	// 笔的起始分型编号
+	size_t j = 1;	// 笔的结束分型编号
 
 	// 标记有效分型（对应有效笔）
-	for (size_t i = 0; i < vF.size();) {
-		if (!vFValid.empty()) {
-			if (i + 1 < vF.size()) {
-				// [back X i ? i + 1]，X=不构成笔，问号=待定
-				if (CanExtend(vF[vFValid.back()], vF[i + 1], vBH, vBL, pHigh, pLow)) {
-					// i+1优于back
-					vFValid.pop_back();
-					vFValid.push_back(i + 1);
-				}
-				// else: back优于i+1，忽略i和i+1
-				i += 2;
-			}
-			else {
-				++i;
-			}
+	for (; j < vF.size(); ) {
+		if (IsValidBi(vF[i], vF[j], vBH, vBL, pHigh)) {
+			// [i, j]构成笔
+			vFValid.push_back(i);
+			vFValid.push_back(j);
+			i = j;
+			++j;
+			break;
 		}
 		else {
-			if (i + 1 < vF.size()) {
-				if (IsValidBi(vF[i], vF[i + 1], vBH, vBL, pHigh)) {
-					// [i, i+1]，逗号=构成笔
-					vFValid.push_back(i);
-					vFValid.push_back(i + 1);
-					i += 2;
+			// [i, j]不构成笔
+			if (j + 1 < vF.size()) {
+				if (CanExtend(vF[i], vF[j + 1], vBH, vBL, pHigh, pLow)) {
+					// j+1优于i，忽略i
+					i = j;
+					++j;
 				}
 				else {
-					// [i X i+1]
-					if (i + 2 < vF.size()) {
-						if (IsValidBi(vF[i + 1], vF[i + 2], vBH, vBL, pHigh)) {
-							// [i X i+1, i+2]
-							vFValid.push_back(i + 2);
-							i += 3;
-						}
-						else {
-							// [i X i+1 X i+2]
-							if (CanExtend(vF[i], vF[i + 2], vBH, vBL, pHigh, pLow)) {
-								// i+2优于i
-								i += 2;
-							}
-							else {
-								// i优于i+2
-								if (i + 3 < vF.size()) {
-									// [i X i+1 X i+2 ? i+3]
-									if (IsValidBi(vF[i], vF[i + 3], vBH, vBL, pHigh)) {
-										vFValid.push_back(i);
-										vFValid.push_back(i + 3);
-										i += 4;
-									}
-									else {
-										i += 3;
-									}
-								}
-								else {
-									i += 3;
-								}
-							}
-						}
-					}
-					else {
-						i += 2;
-					}
+					// i优于j+1，忽略j和j+1
+					j += 2;
 				}
 			}
 			else {
-				++i;
-			}
-		}
-		if (!vFValid.empty()) {
-			for (; i < vF.size() && IsValidBi(vF[vFValid.back()], vF[i], vBH, vBL, pHigh); ++i) {
-				vFValid.push_back(i);
+				break;
 			}
 		}
 	}
+	if (!vFValid.empty()) {
+		for (; j < vF.size();) {
+			if (IsValidBi(vF[i], vF[j], vBH, vBL, pHigh)) {
+				// [i, j]构成笔
+				i = j;
+				++j;
+				vFValid.push_back(i);
+			}
+			else {
+				// [i, j]不构成笔
+				if (j + 1 < vF.size()) {
+					if (CanExtend(vF[i], vF[j + 1], vBH, vBL, pHigh, pLow)) {
+						// j+1优于i，用j+1替换i
+						i = j + 1;
+						vFValid.pop_back();
+						vFValid.push_back(i);
+					}
+					// eles: i优于j+1，忽略j和j+1
+					j += 2;
+				}
+				else {
+					break;
+				}
+			}
+		}
+	}
+
+	memset(pOut, 0, sizeof(*pOut) * nCount);
 	for (auto it = vFValid.begin(); it != vFValid.end(); ++it) {
 		if (vF[*it] > 0) {
 			// 顶分型
