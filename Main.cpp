@@ -110,24 +110,20 @@ void Func1(int nCount, float* pOut, float* pHigh, float* pLow, float* c)
 		if (pLow[i] <= pLow[vBL.back()] && pHigh[vBH.back()] <= pHigh[i]) {
 			// 当前K线包含上一根K线
 			auto itH = ++(vBH.rbegin());
-			auto itL = ++(vBL.rbegin());
-			// 若当前K线包含之前连续多条K线，则处理同缠论不完全一致
-			for (; itH != vBH.rend() && itL != vBL.rend(); ++itH, ++itL) {
+			if (itH != vBH.rend()) {
 				// 未被包含的前一根K线
-				if (pHigh[*itH] > pHigh[i]) {
-					// 高于当前K线，向下处理
+				if (pHigh[*itH] > pHigh[vBH.back()]) {
+					// 向下处理
 					vBL.pop_back();
 					vBL.push_back(i);
-					break;
 				}
-				if (pLow[*itL] < pLow[i]) {
-					// 低于当前K线，向上处理
+				else {
+					// 向上处理
 					vBH.pop_back();
 					vBH.push_back(i);
-					break;
 				}
 			}
-			// 若当前K线包含之前所有K线，则忽略当前K线
+			// else: 若当前K线是第二根且包含第一根，则忽略当前K线
 		}
 		else if (pLow[vBL.back()] <= pLow[i] && pHigh[i] <= pHigh[vBH.back()]) {
 			// 上一根K线包含当前K线
